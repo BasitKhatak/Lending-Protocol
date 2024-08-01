@@ -1,0 +1,19 @@
+
+
+Defi Lending/Borrowing protocol.
+
+//Lenders and Borrowrs can deposit borrow tokens and collatoral tokens which is USDC and ETH reespectivily.
+//Lenders and Borrowrs can withdraw borrow and  collatoral tokens.
+//Lender can put there loan offers.
+//Borrowers put there Borrow offers.
+//Lenders can select Borrower for loan,It include creating credit and debt position for himself and Borrower,
+//and buying existing credit from borrwer and give them loan against there credit.
+
+//Borrower can select Lender for loan,It include creating new credit positiona nd sell it to lender or sell //existing credit to lender for loan.
+
+//Borrowers can repay there laons.
+//(Self liquidation)Lenders can liquidtate there cresit positions when collatoroal ratito below than hundred.
+//Liquidation for every one to liquidate any undervalue debt  position.
+//ChainLink price Feeds are used for calculatong price of eth in usdc. 
+
+
