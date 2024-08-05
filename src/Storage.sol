@@ -5,20 +5,14 @@ import{IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {NonTransferable} from "@src/tokens/NonTransferable.sol"; 
 import{IWETH} from "@src/Interfaces/IWETH.sol";
 
-library Storage{
-    uint256 constant PERCENT=1e18;
+
+   uint256 constant PERCENT=1e18;
 
    enum AmountType{
     credit,
     cashamount
    }
 
-   struct DataParms{
-    IERC20 collatoraltoken;
-    IERC20 debttoken;
-    address ETHfeedaddress;
-    address USDCfeedaddress;
-   }
     struct FeeConfigurartions{
         uint256 swapfee_percent;
         uint256 protocol_liquidationFee;
@@ -39,9 +33,9 @@ library Storage{
     struct DataParms{
         address underlyingborrowtoken;
         address underlyingcollatoraltoken;
-        address variablePool;    
+        address pricefeed;
+        address variablePool;
     }
-
     struct Tokens{
         NonTransferable collatoraltoken;
         NonTransferable borrowtoken;
@@ -61,7 +55,7 @@ library Storage{
     }
 
     struct YieldCurve{
-        uint256[]api;
+        uint256[] apr;
         uint256[] tenor; 
     }
 
@@ -72,8 +66,7 @@ library Storage{
 
     struct BorrowOffer{
         YieldCurve yieldCurve;
-        bool Fullsale;
-          
+        bool Fullsale;    
     }
     struct CreditPosition{
         address lender;
@@ -81,7 +74,7 @@ library Storage{
         uint256 creditamount;
     }
 
-    struct Debtposition{
+    struct DebtPosition{
         address borrower;
         uint256 futurevalue;
         uint256 duedate;
@@ -120,4 +113,3 @@ library Storage{
         uint256 debtpositionId;
         uint256 minCollatoral;
     }
-}

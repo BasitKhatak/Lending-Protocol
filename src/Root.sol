@@ -1,61 +1,67 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {YieldCurvelib} from "src/libraries/YieldCurvelib.sol";
-import {Math} from "src/libraries/Math.sol";
-import {Oracle} from "src/Oracle.sol";
-import {NonTransferable} from "./tokens/NonTransferable.sol";
+import {YieldCurvelib} from "@src/libraries/YieldCurvelib.sol";
+import {Math} from "@src/libraries/Math.sol";
+import {Oracle} from "@src/Oracle.sol";
+import {NonTransferable} from "@src/tokens/NonTransferable.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IWETH} from "./Interfaces/IWETH.sol";
-import {IAtoken} from "./Interface/IAtoken.sol";
-import {IDataProvider} from "./Interface/IDataProvider.sol";
-import {IPool} from "../Interface/IPool.sol";
+import {IWETH} from "@src/Interfaces/IWETH.sol";
+import {IAtoken} from "@src/Interfaces/IAtoken.sol";
+import {IPool} from "@src/Interfaces/IPool.sol";
+import {IPriceFeed} from "@src/Interfaces/IPriceFeed.sol"; 
 import{
- DataParms,
- Tokens,
- FeeConfigurartion,
- RiskParms,
- PERCENT,
- DataParms,
- DepositParms,
- LoanOffer,
- BorrowOffer,
- CreditPosition,
- DebtPosition,
- BuyCreditParms
-} from ".Storage.sol";
+  FeeConfigurartions,
+  DataParms,
+  RiskParms,
+  Tokens,
+  DepositParms,
+  WithdrawParms,
+  YieldCurve,
+  LoanOffer,
+  BorrowOffer,
+  DebtPosition,
+  CreditPosition,
+  BuyCreditParms,
+  RepayParms,
+  SellCreditparms,
+  LiquidationParms,
+  PERCENT
+} from "@src/Storage.sol";
 
-
+///@notice Main contract for user interaction which is used by user
 
 contract Root{
 
  address public owner;
- FeeConfigurartion public feeconfig;
+ 
+ IWETH public CollatoralToken;
+ IERC20 public BorrowToken;
+ IPriceFeed public PriceFeed;
+ 
+ FeeConfigurartions public  feeconfig;
  RiskParms public riskparms;
  DataParms public dataparms;
  Tokens public tokens;
 
- IWETH public weth;
- IERC20 public USDC;
- 
- uint256 internal creditId=1; //credit id for creditposition increment everytime new creditposition is created//
- uint256 internal debtId=1;  //debt id for debtposition increment everytime new debtposition is created//
+ uint256 internal creditId=1; //credit id for creditposition increment everytime new creditposition is created
+ uint256 internal debtId=1;  //debt id for debtposition increment everytime new debtposition is created
 
- mapping(address => LoanOffer)public loanoffers;  //lender address to loanoffer mapping//
- mapping(address => BorrowOffer)public borrowoffers;  //Borrower address to Borrowoffer mapping//
- mapping(uint256=>CreditPosition)public creditpositions;
- mapping(uint256=>DebtPosition)public debtpositions;
- mapping(uint256=>DebtPosition)public CredittoDebtposition;
+ mapping(address => LoanOffer)public loanoffers;  //lender address to loanoffer mapping
+ mapping(address => BorrowOffer)public borrowoffers;  //Borrower address to Borrowoffer mapping
+ mapping(uint256=>CreditPosition)public creditpositions;//creditpositionId to creditposition
+ mapping(uint256=>DebtPosition)public debtpositions;//debtpositionId to debtposition
+ mapping(uint256=>DebtPosition)public CredittoDebtposition;//creditpositionId to debtposition
 
  
- constructor(FeeConfigurartion calldata _feeconfig,RiskParms calldata _riskparms,DataParms calldata _dataparms,address _owner){
+ constructor(FeeConfigurartions memory _feeconfig,RiskParms memory _riskparms,DataParms memory _dataparms,address _owner){
     require(_feeconfig.swapfee_percent<PERCENT,"swap fee must be less than 100Percent");
-    require(dataparms.ETHfeedaddresscv!==address(0) && dataparms.USDCfeedaddress !==address(0),"price fedd address must be zon zero");
+
     require(_feeconfig.liquidatorreward_percent<PERCENT,"liquidatorreward_percent must be less than 100Percent");
     require(_feeconfig.protocol_liquidationFee<PERCENT,"liquidationfee  must be less than 100Percent");
     require(_feeconfig.overdueloan_protocol_liquidationFee<PERCENT," must be less than 100Percent");
-    require(_feeconfig.FeeReciever !=address(0));
+    require(_feeconfig.feeReciever !=address(0));
     require(_owner !=address(0));
 
     //Validating Riskparmeters//
@@ -66,10 +72,11 @@ contract Root{
     require(_riskparms.mintenor>0);
 
     //Validating Dataparms//
-    require(_dataparms.underlyingborrowtoken !== address(0));
-    require(_dataparms.underlyingcollatoraltoken !==address(0));
-    rquire (_dataparms.variablePool !== address(0));
-    require(_dataparms.weth != address(0));
+    require(_dataparms.underlyingborrowtoken != address(0));
+    require(_dataparms.underlyingcollatoraltoken !=address(0));
+    require(_dataparms.pricefeed != address(0));
+    require (_dataparms.variablePool != address(0));
+  
     
 
     //Initialize data//
@@ -87,39 +94,43 @@ contract Root{
     riskparms.mintenor=_riskparms.mintenor;
 
     dataparms.underlyingborrowtoken=_dataparms.underlyingborrowtoken;
-    dataparms.collatoraltoken=_dataparms.underlyingcollatoraltoken;
+    dataparms.underlyingcollatoraltoken=_dataparms.underlyingcollatoraltoken;
     dataparms.variablePool=_dataparms.variablePool;
-    weth=WETH(_dataparms.underlyingcollatoraltoken);
-    USDC=IERC20(_dataparms.underlyingborrowtoken);
-    tokens.collatoraltoken=new NonTransferable(address(this),ERC20(_dataparms.underlyingcollatoraltoken).name(),ERC20(_dataparms.underlyingcollatoraltoken).symbol(),ERC20(_dataparms.underlyingcollatoraltoken).decimal());
-    tokens.borrowtoken=new NonTransferable(address(this),ERC20(_dataparms.underlyingborrowtoken).name(),ERC20(_dataparms.underlyingborrowtoken).symbol(),ERC20(_dataparms.underlyingborrowtoken).decimal());
-    tokens.debttoken=new NonTransferable(address(this),ERC20(_dataparms.underlyingborrowtoken).name(),ERC20(_dataparms.underlyingborrowtoken).symbol(),ERC20(_dataparms.underlyingborrowtoken).decimal());
-    tokens.weth=IWETH(_dataparms.weth);
+
+    PriceFeed=IPriceFeed(_dataparms.pricefeed);
+    CollatoralToken=IWETH(_dataparms.underlyingcollatoraltoken);
+    BorrowToken=IERC20(_dataparms.underlyingborrowtoken);
+    tokens.collatoraltoken=new NonTransferable(address(this),ERC20(_dataparms.underlyingcollatoraltoken).name(),ERC20(_dataparms.underlyingcollatoraltoken).symbol(),ERC20(_dataparms.underlyingcollatoraltoken).decimals());
+    tokens.borrowtoken=new NonTransferable(address(this),ERC20(_dataparms.underlyingborrowtoken).name(),ERC20(_dataparms.underlyingborrowtoken).symbol(),ERC20(_dataparms.underlyingborrowtoken).decimals());
+    tokens.debttoken=new NonTransferable(address(this),ERC20(_dataparms.underlyingborrowtoken).name(),ERC20(_dataparms.underlyingborrowtoken).symbol(),ERC20(_dataparms.underlyingborrowtoken).decimals());
+    
     }
 
-    //deposit function for lender and borrower to deposit collatoral and borrow token.
+    ///@notice deposit function for lender and borrower to deposit collatoral and borrow token.
 
-    function deposit(DepositParms calldata depositparms)public payble{
+    function deposit(DepositParms calldata depositparms)public payable{
         //deposit token address must be either USDC or WETH//
-        require(depositparms.token==dataparms.borrowtoken || depositparms.token==dataparms.collatoraltoken);
+        require(depositparms.token==dataparms.underlyingborrowtoken || depositparms.token==dataparms.underlyingcollatoraltoken);
         if(depositparms.amount <=0){
             revert("deposit amount should be greater than zero");
         }
-        if((msg.value > 0 && depositparms.amount !== msg.value) || (DepositParms.token == dataparms.underlyingborrowtoken && msg.value !== 0)){
+        if((msg.value > 0 && depositparms.amount != msg.value) || (depositparms.token == dataparms.underlyingborrowtoken && msg.value != 0)){
             revert(" USDC or ETH tokens are  not allowed to be deposit at same time");
         }
         
         if(depositparms.token == dataparms.underlyingcollatoraltoken && msg.value == 0 ){
-            if(weth.balanceOf(msg.sender) < depositparms.amount){
+            if(CollatoralToken.balanceOf(msg.sender) < depositparms.amount){
                 revert("you do not have enough balance to deposit");
             }
         
         }
-        uint256 balanceBefore=weth.balanceOf(address(this));
+        uint256 balanceBefore=CollatoralToken.balanceOf(address(this));
+        uint256 netBalance;
+        // deposit msg.value to Weth to recieve the Weth which is used in this contract
         if(msg.value > 0){
-            tokens.weth.deposit({value:msg.value});
-            uint256 balanceAfter=tokens.weth.balanceOf(address(this));
-            uint256 netBalance=balanceAfter-balanceBefore;
+            CollatoralToken.deposit{value:msg.value}();
+            uint256 balanceAfter=CollatoralToken.balanceOf(address(this));
+            netBalance=balanceAfter-balanceBefore;
         }
         if(depositparms.token == dataparms.underlyingcollatoraltoken){
             msg.value > 0 ? depositCollatoralToken(netBalance) : depositCollatoralToken(depositparms.amount);   
@@ -129,19 +140,20 @@ contract Root{
         }    
     }
 
-    //deposit borrowtoken to Aave variable pool//
+    ///@notice deposit borrowtoken to Aave variable pool
     function depositBorrowToken(uint256 amount)internal{
         IPool pool=IPool(dataparms.variablePool);
-        IAtoken atoken=IAtoken(pool.getReserveData().aTokenAddress);
-        uint256 sacledBalance=atoken.sacledBalance(address(this));
+        IAtoken atoken=IAtoken(pool.getReserveData(dataparms.underlyingborrowtoken).aTokenAddress);
+        uint256 sacledBalance=atoken.scaledBalanceOf(address(this));
 
-        USDC.approve(dataparms.variablePool,amount);
-        //deposit USDC in Aave variable Pool//
+        BorrowToken.approve(dataparms.variablePool,amount);
+        //deposit USDC in Aave variable Pool
         pool.supply(dataparms.underlyingborrowtoken,amount,address(this),0);
 
-        uint256 NetBalance=atoken.sacledBalance(address(this))-sacledBalance;
+        uint256 NetBalance=atoken.scaledBalanceOf(address(this))-sacledBalance;
         tokens.borrowtoken.mint(msg.sender,NetBalance);
     }
+    //mint collatoral tokens for user which represent his/her collatoral in this protocol
     function depositCollatoralToken(uint256 amount)internal{
         tokens.collatoraltoken.mint(msg.sender,amount);
     }
@@ -151,10 +163,10 @@ contract Root{
         if(amount == 0){
             revert("amount should be non zero");
         }
-        if(token != tokens.collatoraltoken && token != tokens.borrowtoken){
+        if(token != dataparms.underlyingborrowtoken && token != dataparms.underlyingcollatoraltoken){
             revert("inavlid token it is not supported");
         }
-        if(token == tokens.collatoraltoken){
+        if(token == dataparms.underlyingcollatoraltoken){
             if(tokens.collatoraltoken.balanceOf(msg.sender) < amount){
                 revert("amount should be within or equal to balance");
             }
@@ -163,23 +175,26 @@ contract Root{
                 if(isLiquadatible(msg.sender)){
                     revert("you cannot withfraw collatoral as your laon is liquidatible");
                 }
-               weth.transfer(msg.sender,amount);
+               CollatoralToken.transfer(to,amount);
             }
         }
     }
 
-    function isLiquadatible(address user)public returns(bool){
+    ///@notice function to check if borrower position is liquidatible or not
+    function isLiquadatible(address user)public view returns(bool){
         uint256 debt=tokens.debttoken.balanceOf(user);
         uint256 collatoral=tokens.collatoraltoken.balanceOf(user);
 
-        uint256 debtInWad=Math.amountToWad(debt,tokens.debttoken.decimal());
-        uint256 collatoralPrice=Oracle.getETHprice();
+        uint256 debtInWad=Math.amountToWad(debt,tokens.debttoken._decimals());
+
+        //get the collatoral Price from oracle which is in 18 decimal
+        uint256 collatoralPrice=PriceFeed.getETHPrice();
         uint256 collatoralRatio=Math.mulDivDown(collatoral,collatoralPrice,debtInWad);
 
         if(collatoralRatio == 0){
             return(false);
         }
-        elseif(collatoralRatio <= riskparms.crliquidation){
+        else if(collatoralRatio <= riskparms.crliquidation){
             return(true);
         }
         else{
@@ -190,11 +205,11 @@ contract Root{
     }
     function setloanoffer(LoanOffer calldata loanoffer)external{
         ValidateLoanoffer(loanoffer);
-        Executeloanoffer(loanoffer);
+        executeloanoffer(loanoffer);
     }
 
-    //validate laonoffer given by lender//
-    function ValidateLoanoffer(loanoffer)internal {
+    //validate laonoffer given by lender
+    function ValidateLoanoffer(LoanOffer calldata loanoffer)internal view {
         if(loanoffer.maxdue == 0){
             revert("loan duration must be greater than zero");
         }
@@ -202,162 +217,139 @@ contract Root{
             revert("loan duration must be greater than mintenor");
         }
 
-        if(loanoffer.relativeCurve.tenor[0] < riskparms.mintenor){
+        if(loanoffer.yieldCurve.tenor[0] < riskparms.mintenor){
             revert("min tenor must be equal to or greater than protocol min tenor");
         }
-        uint256 length=relativeCurve.tenor.length;
-        if(laonoffer.relativeCurve.tenor[length-1] > riskparms.maxtenor){
+        uint256 length=loanoffer.yieldCurve.tenor.length;
+        if(loanoffer.yieldCurve.tenor[length-1] > riskparms.maxtenor){
             revert("lender offer maxtenor should be less tha protocol maxtenor");
         }
 
-        if(laonoffer.relativeCurve.tenor.length ==0 || loanoffer.relativeCurve.api.length == 0){
+        if(loanoffer.yieldCurve.tenor.length ==0 || loanoffer.yieldCurve.apr.length == 0){
             revert("Both array length should be greater than zero");
         }
-        if(loanoffer.relativeCurve.tenor.length != loanoffer.relativeCurve.api.length){
-            revert("Both array length should be equal")
+        if(loanoffer.yieldCurve.tenor.length != loanoffer.yieldCurve.apr.length){
+            revert("Both array length should be equal");
         }
 
         for(uint i=length-1; i>0; i--){
-            if(loanoffer.relativeCurve.tenor[i-1] >= laonoffer.relativeCurve.tenor[i]){
+            if(loanoffer.yieldCurve.tenor[i-1] >= loanoffer.yieldCurve.tenor[i]){
                 revert("tenors must be in ascending order");
             }
-        }
+        }}
 
-        function executeloanoffer(LoanOffer calldata laonoffer)internal{
-            loanoffers[msg.sender]=LoanOffer({relativeCurve:laonoffer.relativeCurve,maxdue:loanoffer.maxdue});
+        function executeloanoffer(LoanOffer calldata loanoffer)internal{
+            loanoffers[msg.sender]=LoanOffer({yieldCurve:loanoffer.yieldCurve,maxdue:loanoffer.maxdue});
         }
         
         function SetBorrowoffer(BorrowOffer calldata parms)external{
-            validateBorrowOffer(oarms);
-
-
-        function executeBorrowoffer(BorrowOffer calldata parms)internal{
-             borrowoffers[msg.sender]=BorrowOffer({relativeCurve:parms.relativeCurve});
+            validateBorrowOffer(parms);
+            ExecuteBorrowoffer(parms);
         }
 
-        function validateBorrowOffer(BorrowOffer calldata parms)public {
-            if(parms.relativeCurve.tenor.length != parms.relativeCurve.api.length){
+
+        function ExecuteBorrowoffer(BorrowOffer calldata parms)internal{
+             borrowoffers[msg.sender]=BorrowOffer({yieldCurve:parms.yieldCurve,Fullsale:parms.Fullsale});
+        }
+
+        ///@notice it validate the Borrow offer to ensure offer do not voilate protocol assign security parameters
+        function validateBorrowOffer(BorrowOffer calldata parms)public view{
+            if(parms.yieldCurve.tenor.length != parms.yieldCurve.apr.length){
                 revert("api and tenor array length should be equal");
             }
-            if(parms.relativeCurve.tenor.length==0 || parms.relativeCurve.api.length==0){
+            if(parms.yieldCurve.tenor.length==0 || parms.yieldCurve.apr.length==0){
                 revert("Both of tenor and api length should be greater than zero");
             }
-            uint length=parms.relativeCurve.tenor.length;
-            if(parms.relativeCurve.tenor[0] < riskparms.mintenor || parms.relativeCurve.tenor[length-1]>riskparms.maxtenor){
+            uint256 length=parms.yieldCurve.tenor.length;
+            if(parms.yieldCurve.tenor[0] < riskparms.mintenor || parms.yieldCurve.tenor[length-1]>riskparms.maxtenor){
                 revert("max and min tenor shoild be within protocol specified range");
             }
-
-            
-            for(uint i=(length-1),i>0;i--){
+            for(uint i=(length-1);i>0;i--){
                 if(
-                    parms.relativeCurve.tenor[i-1] >= parms.relativeCurve.tenor[i]
+                    parms.yieldCurve.tenor[i-1] >= parms.yieldCurve.tenor[i]
                 ){
                     revert("tenors should be in ascending order");
-                }
-                
+                }       
             }
         }
-
-        function BuyCredit(BuyCreditParms calldata parms)external {
-            
-        }
-
-        //It validates buyoffer from lender//
-        function validateBuyCredit(BuyCreditParms calldata parms)public{
-
+        //It validates buyoffer from lender to ensure that it do not voilate the risk Parameters of protocol
+        function validateBuyCredit(BuyCreditParms calldata parms)public view {
+          CreditPosition memory creditposition=creditpositions[parms.creditPositionId];
+          DebtPosition memory deptposition=CredittoDebtposition[creditposition.debpositionId];  
           if(parms.amount < riskparms.minBuyCredit){
               revert("credit must be graeter than minbuyCredit tokens");
             }  
-          //First case in which lender give laon to buyer by opening credit and deposit position//  
+          //First case in which lender give laon to buyer by opening credit and deposit position
           if(parms.newPosition){
             if(parms.creditPositionId !=0){
                 revert("invalid credit positionId");
             }
             if(parms.borrower == address(0)){
-                revert("borrower address should be valid address")
+                revert("borrower address should be valid address");
             }
-            if(borrowoffers[parms.borrower].relativeCurve.tenor.length ==0){
+            if(borrowoffers[parms.borrower].yieldCurve.tenor.length ==0){
                 revert("borrow offer do not exist for borrower");
             }
             if(parms.tenor < riskparms.mintenor || parms.tenor >riskparms.maxtenor){
                 revert("tenor sould be within max and min tenor range");
             }
-            if()
 
-          //Second Case in which lender Buy creditPosition from borrower and give a loan to borrower in return//
+          //Second Case in which lender Buy creditPosition from borrower and give a loan to borrower in return
           }
           else{
-
-             CreditPosition memory creditposition=creditpositions[parms.creditPositionId];
-             DebtPosition memory depositposition=CredittoDebtposition[creditposition.debpositionId];
              if(creditposition.creditamount < riskparms.minBuyCredit){
-                revert("invalid creditposition id")
+                revert("invalid creditposition id");
              }
-             if(block.timestamp >= depositposition.duedate){
+             if(block.timestamp >= deptposition.duedate){
                 revert("debt position is expired");
              }
-             address borrower=creditpositions[creditPositionId].lender;
-             uint256 tenor=depositposition.duedate-block.timestamp;
+             address borrower=creditpositions[parms.creditPositionId].lender;
+             uint256 tenor=deptposition.duedate-block.timestamp;
               
-             if(borrowoffers[borrower].relativeCurve.tenor.length ==0){
+             if(borrowoffers[borrower].yieldCurve.tenor.length ==0){
                 revert("Borrow offer do not exist for borrwerer");
              }
-             
-             
-             if(parms.amount > CredittoDebtposition[parms.creditPositionId].futurevalue){
-               
+
+             if(parms.amount > CredittoDebtposition[parms.creditPositionId].futurevalue){  
                revert("buy creditamount should be less than total availible credit amount");
              }
              
-             //check if minimum creditamount is left afetr partial sale of credit//
+             //check if minimum creditamount is left after partial sale of credit
              if(!(borrowoffers[borrower].Fullsale)){
                 if(riskparms.minBuyCredit > creditposition.creditamount-parms.amount){
                     revert("minBuy creditamount should be left for borrower");
                 }
              }
-
-             //check if borrower position is transferable or not//
-             if(!(isCreditTransferable())){
+             //check if borrower position is transferable or not
+             if(!(isCreditTransferable(deptposition))){
                 revert("credit position iss non transferable as depositposition is in under liquidation ratio");
              }
-
-             uint256 Apr=YieldCurvelib.getApr(tenor,borrowoffers[borrower].relativeCurve);
+             uint256 APR=YieldCurvelib.getApr(tenor,borrowoffers[borrower].yieldCurve);
              if(parms.minAPR > APR){
                 revert("Borrower provided Apr is below minApr");
              }
              }
-         
         }
 
-        function CreditAmountOut(uint256 cashamount,BorrowOffer memory borrowoffer,uint256 tenor)public returns(uint256){
-             uint256 apr=
-        }
-
-        function CashamountOut(uint256 creditamount,BorrowOffer memory borrowoffer,uint256 tenor)public returns(uint256){
-
-        }
-
-        function isCreditTransferable(DebtPosition memory debtpos)public returns(bool){
+        //check if debtposition is transferable by borrower or not by comparing its risk parameters to protocol risk parameters
+        function isCreditTransferable(DebtPosition memory debtpos)public view returns(bool result){
             uint256 collatoral = tokens.collatoraltoken.balanceOf(debtpos.borrower);
-            uint256 debt=tokens.debttoken.balanceOf(borrower);
-            uint256 debtinWad=Math.amountToWad(debt,dataparms.debttoken.decimal);
-            uint256 collatoraprice=Oracle.getETHprice();
-            uint256 collatoralratio=Math.mulDivDown(collatoralvalue,collatoraprice,debtinWad);
+            uint256 debt=tokens.debttoken.balanceOf(debtpos.borrower);
+            uint256 debtinWad=Math.amountToWad(debt,tokens.debttoken._decimals());
+            uint256 collatoraprice= PriceFeed.getETHPrice();
+            uint256 collatoralratio=Math.mulDivDown(collatoral,collatoraprice,debtinWad);
 
             if(collatoralratio < riskparms.crliquidation){
                 return(false);
             }
-
         }
-
         //READ FUNTIONS//
-        function getdebtposition(uint256 id)public returns(DebtPosition){
+        function getdebtposition(uint256 id)public view returns(DebtPosition memory){
             require(id>=0 && id<=debtId,"id should be valid debtpositioId");
             return(debtpositions[id]);
         }
-
-        function getdebtPositionFromCreditId(uint256 creditPositionId)public returns(DebtPosition){
-            require(creditPositionId>=0 && creditpositionId<=creditId,"id should be valid creditpositionId");
+        function getdebtPositionFromCreditId(uint256 creditPositionId)public view returns(DebtPosition memory){
+            require(creditPositionId>=0 && creditPositionId<=creditId,"id should be valid creditpositionId");
             return(CredittoDebtposition[creditPositionId]);
         }
 

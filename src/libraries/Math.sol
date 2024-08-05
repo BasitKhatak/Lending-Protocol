@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.13;
 
 import {FixedPointMathLib} from "@solady/utils/FixedPointMathLib.sol";
 
@@ -40,10 +40,6 @@ library Math {
     /// @notice Find the index of `value` in the sorted list `array`
     /// @dev If `value` is below the lowest value in `array` or above the highest value in `array`, the function returns (type(uint256).max, type(uint256).max)
     ///      Formally verified with Halmos (check_Math_binarySearch)
-    /// @param array The sorted list to search
-    /// @param value The value to search for
-    /// @return low The index of the largest element in `array` that is less than or equal to `value`
-    /// @return high The index of the smallest element in `array` that is greater than or equal to `value`
     function binarySearch(uint256[] memory array, uint256 value) internal pure returns (uint256 low, uint256 high) {
         low = 0;
         high = array.length - 1;

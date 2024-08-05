@@ -34,11 +34,14 @@ struct ReserveData {
     //the outstanding debt borrowed against this asset in isolation mode
     uint128 isolationModeTotalDebt;
   }
+   struct ReserveConfigurationMap {
+    uint256 data;
+  }
 
 
 interface IPool{
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)external;
-     function getReserveData(
-    address asset
-  ) external view  returns (ReserveData);
+    function getReserveData(
+     address asset
+  ) external view  returns (ReserveData memory);
 }

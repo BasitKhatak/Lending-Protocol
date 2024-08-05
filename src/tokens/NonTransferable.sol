@@ -7,8 +7,8 @@ import{Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 contract NonTransferable is ERC20,Ownable{
 
-    uint256  immutable decimal;
-    constructor(address memory owner,string memory name,string memory symbol,uint256 _decimal)ERC20(name,symbol)Ownable(owner){
+    uint8  immutable decimal;
+    constructor(address  owner,string memory name,string memory symbol,uint8 _decimal)ERC20(name,symbol)Ownable(owner){
         decimal=_decimal;     
     }
 
@@ -20,14 +20,15 @@ contract NonTransferable is ERC20,Ownable{
         super._burn(reciever,amount);
     }
 
-    function transfer(address to,uint256 _amount)public onlyOwner{
-        super.transfer(to,_amount);
+    function transfer(address to,uint256 _amount) public virtual override returns (bool result){
+        result=super.transfer(to,_amount);
+        return(result);
     }
 
     function approve(address, uint256) public virtual override returns (bool) {
-        revert Errors.NOT_SUPPORTED();
+        revert("Not supported");
     }
-     function decimals() public view virtual override returns (uint8) {
+     function _decimals() public view  returns (uint8) {
         return decimal;
     }
     
